@@ -1,6 +1,6 @@
 # Fetal Health Classification
-Portfolio demo project, using the Fetal Health Classification data set from Kaggle
-\
+Portfolio demo project, using the Fetal Health Classification data set from Kaggle. The data was taken from Cardiotocogram (CTG) readings, which measure fetal heartrate (FHR) and uterine contractions (UCs). Each sample was classified by experts as normal/1 (fetus in good health), suspect/2 (fetus may not be in good health) or pathological/3 (readings indicate fetus is not in good health). Readings were collected anywhere from 48 hours before birth and up to 30 minutes after birth.
+
 # Feature Descriptions
 |Feature Name                                          |Description                                            |
 |------------------------------------------------------|-------------------------------------------------------|
