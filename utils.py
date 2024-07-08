@@ -3,6 +3,65 @@ from scipy import stats
 from scipy.signal import medfilt
 import numpy as np
 from sklearn.metrics import roc_curve, auc
+from sklearn.base import BaseEstimator, TransformerMixin
+from itertools import product
+from math import log
+
+def zero_safe(x):
+    if x.min() > 1.0:
+        shift = 0.0
+    elif x.min() > 0.0:
+        shift = 1.0 - x.min()
+    else:
+        shift = (-1.0*x.min())+1.0
+    return np.add(x, shift)
+
+class NonLinearTransformer(BaseEstimator, TransformerMixin):
+    def __init__(self, target, dmin, dmax,
+                 bmin, bmax, path_len,
+                 verbose=False):
+        self.target = target
+        self.best_params = {}
+        self.verbose = verbose
+        self.feature_names = []
+        dpath = np.linspace(dmin, dmax, path_len)
+        bpath = np.linspace(bmin, bmax, path_len)
+        inverse = [True, False]
+        self.grid = product(dpath,bpath,bpath,inverse)
+    
+    def apply(self, x, params):
+            d, b1, b2, inv = params
+            x_ = zero_safe(x)
+            tx = np.power(x_, d)
+            tx = np.add(tx, np.power(b1, x))
+            tx = np.add(tx, log(x_, base=b2))
+            if inv:
+                tx = np.add(tx, np.divide(1.0, x_))
+            return tx
+
+    def fit(self, X, y=None):
+        y = X[self.target].to_numpy()
+        self.feature_names = X.columns.values
+        for c in X.columns.values:
+            x = X[c].to_numpy()
+            best_corr = np.abs(np.corrcoef(x, y))[0,1]
+            for params in self.grid:
+                tx = self.apply(x, params)
+                corr = np.abs(np.corrcoef(tx, y))[0,1]
+                if corr > best_corr:
+                    best_corr = corr
+                    self.best_params[c] = params
+            if self.verbose:
+                print(f"{c} best params = {self.best_params[c]}, abs corr = {best_corr}")
+
+    def transform(self, X, y=None):
+        X_ = X.copy()
+        for c in self.feature_names:
+            X_.loc[:,c] = self.apply(X_[c].to_numpy(), self.best_params[c])
+        return X_
+
+
+
 
 def plot_roc(y_test, y_pred):
     fpr, tpr, _ = roc_curve(y_test, y_pred) 
