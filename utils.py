@@ -14,6 +14,16 @@ def transform_target(df, target, epsilon=1e-6):
     targets = list(transforms.keys()) + [target]
     return df, targets
 
+def plot_feature_importance(names, values, title):
+    y = [left for left, _ in sorted(zip(names,values), key=lambda x: x[1])]
+    x = [right for _, right in sorted(zip(names,values), key=lambda x: x[1])]
+    plt.barh(y=y, width=x)
+    plt.grid()
+    plt.title(title)
+    plt.ylabel("Features")
+    plt.xlabel("Importance")
+    plt.show()
+
 def transform_features(df, transforms):
     for col, func in transforms.items():
         df.loc[:,col] = func(df[col].to_numpy())
