@@ -2,6 +2,19 @@ from matplotlib import pyplot as plt
 from scipy import stats
 from scipy.signal import medfilt
 import numpy as np
+from sklearn.metrics import roc_curve, auc
+
+def plot_roc(y_test, y_pred):
+    fpr, tpr, _ = roc_curve(y_test, y_pred) 
+    roc_auc = auc(fpr, tpr)
+    plt.figure()  
+    plt.plot(fpr, tpr, label=f"ROC curve (area = {roc_auc:.2f})")
+    plt.plot([0, 1], [0, 1], 'k--', label='Chance Prediction')
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('ROC Curve for Precipitation Prediction')
+    plt.legend()
+    plt.show()
 
 def transform_target(df, target, epsilon=1e-6):
     transforms = {f"sqrt_{target}": lambda x: np.sqrt(x), 
