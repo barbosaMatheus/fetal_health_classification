@@ -3,6 +3,22 @@ from scipy import stats
 from scipy.signal import medfilt
 import numpy as np
 
+def transform_target(df, target, epsilon=1e-6):
+    transforms = {f"sqrt_{target}": lambda x: np.sqrt(x), 
+                  f"{target}^2": lambda x: np.power(x,2.0),
+                  f"exp_{target}": lambda x: np.exp(x),
+                  f"inv_{target}": lambda x: np.divide(1,np.add(x,epsilon)),
+                  f"log_{target}": lambda x: np.log(np.add(x,epsilon))}
+    for col, func in transforms.items():
+        df.loc[:,col] = func(df[target].to_numpy())
+    targets = list(transforms.keys()) + [target]
+    return df, targets
+
+def transform_features(df, transforms):
+    for col, func in transforms.items():
+        df.loc[:,col] = func(df[col].to_numpy())
+    return df
+
 def hist_prob_plots(df, col):
     # function to plot a histogram and a Q-Q plot
     # side by side, for a certain variable
