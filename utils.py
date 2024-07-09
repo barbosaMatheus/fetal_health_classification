@@ -5,7 +5,6 @@ import numpy as np
 from sklearn.metrics import roc_curve, auc
 from sklearn.base import BaseEstimator, TransformerMixin
 from itertools import product
-from math import log
 
 def zero_safe(x):
     if x.min() > 1.0:
@@ -16,38 +15,62 @@ def zero_safe(x):
         shift = (-1.0*x.min())+1.0
     return np.add(x, shift)
 
+def sigmoid(x):
+  return np.divide(1.0, np.add(1.0, np.exp(-x)))
+
 class NonLinearTransformer(BaseEstimator, TransformerMixin):
-    def __init__(self, target, dmin, dmax,
-                 bmin, bmax, path_len,
-                 verbose=False):
+    def __init__(self, target, dmax, bmax, verbose=False, mult=False):
         self.target = target
         self.best_params = {}
+        self.best_agg = {}
         self.verbose = verbose
+        self.mult = mult
         self.feature_names = []
-        dpath = np.linspace(dmin, dmax, path_len)
-        bpath = np.linspace(bmin, bmax, path_len)
+        d = list(range(1,int(dmax+1)))
+        dpath = [(1/di) for di in d] + d
+        dpath = np.array(dpath)
+        bpath = np.arange(start=1, stop=bmax+1, step=1)
+        log = [True,False]
         inverse = [True, False]
-        self.grid = product(dpath,bpath,bpath,inverse)
+        cos = [True, False]
+        hcos = [True, False]
+        sig = [True, False]
+        self.grid = product(dpath,bpath,log,inverse,cos,hcos,sig)
     
-    def apply(self, x, params):
-            d, b1, b2, inv = params
-            x_ = zero_safe(x)
-            tx = np.power(x_, d)
-            tx = np.add(tx, np.power(b1, x))
-            tx = np.add(tx, log(x_, base=b2))
-            if inv:
-                tx = np.add(tx, np.divide(1.0, x_))
-            return tx
+    def apply(self, x, params, agg):
+        if params is None:
+            return x
+        d, b, log, inv, cos, hcos, sig = params
+        x_ = zero_safe(x)
+        tx = np.power(x_, d)
+        if b > 1:
+            tx = agg(tx, np.power(b, x))
+        if log:
+            tx = agg(tx, np.log(x_))
+        if inv:
+            tx = agg(tx, np.divide(1.0, x_))
+        if cos:
+            tx = agg(tx, np.cos(x))
+        if hcos:
+            tx = agg(tx, np.cosh(x))
+        if sig:
+            tx = agg(tx, sigmoid(x))
+        del x_
+        return tx
 
     def fit(self, X, y=None):
         y = X[self.target].to_numpy()
-        self.feature_names = X.columns.values
-        for c in X.columns.values:
+        self.feature_names = [c for c in X.columns.values if c != self.target]
+        for c in self.feature_names:
+            self.best_params[c] = None
             x = X[c].to_numpy()
-            best_corr = np.abs(np.corrcoef(x, y))[0,1]
+            best_corr = np.abs(np.corrcoef(x, y)[0,1])
             for params in self.grid:
-                tx = self.apply(x, params)
-                corr = np.abs(np.corrcoef(tx, y))[0,1]
+                if self.mult:
+                    tx = self.apply(x, params, np.multiply)
+                else:
+                    tx = self.apply(x, params, np.add)
+                corr = np.abs(np.corrcoef(tx, y)[0,1])
                 if corr > best_corr:
                     best_corr = corr
                     self.best_params[c] = params
@@ -57,7 +80,10 @@ class NonLinearTransformer(BaseEstimator, TransformerMixin):
     def transform(self, X, y=None):
         X_ = X.copy()
         for c in self.feature_names:
-            X_.loc[:,c] = self.apply(X_[c].to_numpy(), self.best_params[c])
+            if self.mult:
+                X_.loc[:,c] = self.apply(X_[c].to_numpy(), self.best_params[c], np.multiply)
+            else:
+                X_.loc[:,c] = self.apply(X_[c].to_numpy(), self.best_params[c], np.add)
         return X_
 
 
