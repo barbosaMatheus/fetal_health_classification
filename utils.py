@@ -1,9 +1,17 @@
+"""
+Utilities for various data science projects using python.
+Note that the inclusion of this module in a project does
+not mean that everything within is used.
+"""
+
 from matplotlib import pyplot as plt
 from scipy import stats
 from scipy.signal import medfilt
 import numpy as np
 from sklearn.metrics import roc_curve, auc
 from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
 from itertools import product
 
 def zero_safe(x):
@@ -18,9 +26,35 @@ def zero_safe(x):
 def sigmoid(x):
   return np.divide(1.0, np.add(1.0, np.exp(-x)))
 
+class CustomScaler(BaseEstimator, TransformerMixin):
+    """
+    Custom scaler that takes in a dataframe. Can be
+    used as part of a pipeline. X should be a dataframe
+    if not, just use a normal sklearn scaler.
+    """
+    def __init__(self, x_cols):
+        self.x_cols = x_cols
+        self.scaler = StandardScaler()
+
+    def fit(self, X, _=None):
+        self.scaler.fit(X[self.x_cols])
+        return self
+
+    def transform(self, X, _=None):
+        X_ = X.copy()
+        X_.loc[:,self.x_cols] = self.scaler.transform(X[self.x_cols])
+        return X_
+
 class NonLinearTransformer(BaseEstimator, TransformerMixin):
+    """
+    Applies non-linear transform combinations to input data,
+    in order to attempt to find linear relationships in 
+    other axes.
+    """
     def __init__(self, target, dmax, bmax, verbose=False, mult=False):
         self.target = target
+        self.dmax = dmax
+        self.bmax = bmax
         self.best_params = {}
         self.best_agg = {}
         self.verbose = verbose
@@ -35,7 +69,7 @@ class NonLinearTransformer(BaseEstimator, TransformerMixin):
         cos = [True, False]
         hcos = [True, False]
         sig = [True, False]
-        self.grid = product(dpath,bpath,log,inverse,cos,hcos,sig)
+        self.grid = list(product(dpath,bpath,log,inverse,cos,hcos,sig))
     
     def apply(self, x, params, agg):
         if params is None:
@@ -57,27 +91,34 @@ class NonLinearTransformer(BaseEstimator, TransformerMixin):
             tx = agg(tx, sigmoid(x))
         del x_
         return tx
+    
+    def fit_col(self, x, y):
+        best_params = None
+        best_corr = np.abs(np.corrcoef(x, y)[0,1])
+        if self.verbose:
+            print(f"Base corr = {best_corr}")
+        for params in self.grid:
+            if self.mult:
+                tx = self.apply(x, params, np.multiply)
+            else:
+                tx = self.apply(x, params, np.add)
+            corr = np.abs(np.corrcoef(tx, y)[0,1])
+            if corr >= best_corr:
+                best_corr = corr
+                best_params = params
+        return best_params, best_corr
 
-    def fit(self, X, y=None):
+    def fit(self, X, _=None):
         y = X[self.target].to_numpy()
         self.feature_names = [c for c in X.columns.values if c != self.target]
         for c in self.feature_names:
-            self.best_params[c] = None
             x = X[c].to_numpy()
-            best_corr = np.abs(np.corrcoef(x, y)[0,1])
-            for params in self.grid:
-                if self.mult:
-                    tx = self.apply(x, params, np.multiply)
-                else:
-                    tx = self.apply(x, params, np.add)
-                corr = np.abs(np.corrcoef(tx, y)[0,1])
-                if corr > best_corr:
-                    best_corr = corr
-                    self.best_params[c] = params
+            self.best_params[c], best_corr = self.fit_col(x, y)
             if self.verbose:
                 print(f"{c} best params = {self.best_params[c]}, abs corr = {best_corr}")
+        return self
 
-    def transform(self, X, y=None):
+    def transform(self, X, _=None):
         X_ = X.copy()
         for c in self.feature_names:
             if self.mult:
@@ -85,9 +126,6 @@ class NonLinearTransformer(BaseEstimator, TransformerMixin):
             else:
                 X_.loc[:,c] = self.apply(X_[c].to_numpy(), self.best_params[c], np.add)
         return X_
-
-
-
 
 def plot_roc(y_test, y_pred):
     fpr, tpr, _ = roc_curve(y_test, y_pred) 
