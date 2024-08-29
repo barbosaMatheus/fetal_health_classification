@@ -14,18 +14,6 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from itertools import product
 
-def zero_safe(x):
-    if x.min() > 1.0:
-        shift = 0.0
-    elif x.min() > 0.0:
-        shift = 1.0 - x.min()
-    else:
-        shift = (-1.0*x.min())+1.0
-    return np.add(x, shift)
-
-def sigmoid(x):
-  return np.divide(1.0, np.add(1.0, np.exp(-x)))
-
 class CustomScaler(BaseEstimator, TransformerMixin):
     """
     Custom scaler that takes in a dataframe. Can be
@@ -43,88 +31,6 @@ class CustomScaler(BaseEstimator, TransformerMixin):
     def transform(self, X, _=None):
         X_ = X.copy()
         X_.loc[:,self.x_cols] = self.scaler.transform(X[self.x_cols])
-        return X_
-
-class NonLinearTransformer(BaseEstimator, TransformerMixin):
-    """
-    Applies non-linear transform combinations to input data,
-    in order to attempt to find linear relationships in 
-    other axes.
-    """
-    def __init__(self, target, dmax, bmax, verbose=False, mult=False):
-        self.target = target
-        self.dmax = dmax
-        self.bmax = bmax
-        self.best_params = {}
-        self.best_agg = {}
-        self.verbose = verbose
-        self.mult = mult
-        self.feature_names = []
-        d = list(range(1,int(dmax+1)))
-        dpath = [(1/di) for di in d] + d
-        dpath = np.array(dpath)
-        bpath = np.arange(start=1, stop=bmax+1, step=1)
-        log = [True,False]
-        inverse = [True, False]
-        cos = [True, False]
-        hcos = [True, False]
-        sig = [True, False]
-        self.grid = list(product(dpath,bpath,log,inverse,cos,hcos,sig))
-    
-    def apply(self, x, params, agg):
-        if params is None:
-            return x
-        d, b, log, inv, cos, hcos, sig = params
-        x_ = zero_safe(x)
-        tx = np.power(x_, d)
-        if b > 1:
-            tx = agg(tx, np.power(b, x))
-        if log:
-            tx = agg(tx, np.log(x_))
-        if inv:
-            tx = agg(tx, np.divide(1.0, x_))
-        if cos:
-            tx = agg(tx, np.cos(x))
-        if hcos:
-            tx = agg(tx, np.cosh(x))
-        if sig:
-            tx = agg(tx, sigmoid(x))
-        del x_
-        return tx
-    
-    def fit_col(self, x, y):
-        best_params = None
-        best_corr = np.abs(np.corrcoef(x, y)[0,1])
-        if self.verbose:
-            print(f"Base corr = {best_corr}")
-        for params in self.grid:
-            if self.mult:
-                tx = self.apply(x, params, np.multiply)
-            else:
-                tx = self.apply(x, params, np.add)
-            corr = np.abs(np.corrcoef(tx, y)[0,1])
-            if corr >= best_corr:
-                best_corr = corr
-                best_params = params
-        return best_params, best_corr
-
-    def fit(self, X, _=None):
-        y = X[self.target].to_numpy()
-        self.feature_names = [c for c in X.columns.values if c != self.target]
-        for c in self.feature_names:
-            x = X[c].to_numpy()
-            self.best_params[c], best_corr = self.fit_col(x, y)
-            if self.verbose:
-                print(f"{c} best params = {self.best_params[c]}, abs corr = {best_corr}")
-        return self
-
-    def transform(self, X, _=None):
-        X_ = X.copy()
-        for c in self.feature_names:
-            if self.mult:
-                X_.loc[:,c] = self.apply(X_[c].to_numpy(), self.best_params[c], np.multiply)
-            else:
-                X_.loc[:,c] = self.apply(X_[c].to_numpy(), self.best_params[c], np.add)
         return X_
 
 def plot_roc(y_test, y_pred):
